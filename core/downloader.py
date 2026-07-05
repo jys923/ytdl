@@ -108,8 +108,16 @@ def list_formats(url: str) -> tuple[str, list[FormatInfo]]:
 # 다운로드 실행
 # ---------------------------------------------------------------------------
 
-def download_single(url: str, format_id: str | None, audio_only: bool) -> None:
-    """단일 영상 다운로드. format_id가 None이면 audio_only 여부로 결정."""
+def download_single(
+    url: str,
+    format_id: str | None,
+    audio_only: bool,
+    progress_hook=None,
+) -> None:
+    """단일 영상 다운로드. format_id가 None이면 audio_only 여부로 결정.
+
+    progress_hook: yt-dlp progress_hooks 형식의 콜백 (dict를 인자로 받음). GUI 진행률 표시용.
+    """
     outtmpl = f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
 
     if audio_only:
@@ -136,14 +144,23 @@ def download_single(url: str, format_id: str | None, audio_only: bool) -> None:
             "postprocessors": [{"key": "FFmpegEmbedSubtitle"}],
         }
 
+    if progress_hook:
+        opts["progress_hooks"] = [progress_hook]
+
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
 
 
-def download_playlist(url: str, audio_only: bool, max_height: int | None = 1080) -> None:
+def download_playlist(
+    url: str,
+    audio_only: bool,
+    max_height: int | None = 1080,
+    progress_hook=None,
+) -> None:
     """재생목록 일괄 다운로드.
 
     max_height: 이 값 이하 화질 중 최고화질 (None이면 제한 없음, 최고화질)
+    progress_hook: yt-dlp progress_hooks 형식의 콜백. GUI 진행률 표시용.
     """
     outtmpl = f"{DOWNLOAD_DIR}/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s"
 
@@ -173,6 +190,9 @@ def download_playlist(url: str, audio_only: bool, max_height: int | None = 1080)
             "subtitleslangs": ["ko", "en"],
             "postprocessors": [{"key": "FFmpegEmbedSubtitle"}],
         }
+
+    if progress_hook:
+        opts["progress_hooks"] = [progress_hook]
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])

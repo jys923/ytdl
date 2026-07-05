@@ -1,2 +1,10 @@
 yt-dlp
 imageio-ffmpeg
+
+# ttkbootstrap은 gui_tkinter.py의 다크테마 적용에 필요.
+ttkbootstrap
+
+# PyQt6, qdarkstyle은 gui_qt.py(Qt 버전 GUI + 다크테마)를 쓸 때만 필요.
+# CLI(cli.py)만 쓸 거면 둘 다 없어도 됨.
+PyQt6
+qdarkstyle

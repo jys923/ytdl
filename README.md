@@ -31,18 +31,56 @@ pip install -r requirements.txt
 
 **venv가 활성화된 상태**에서 실행해야 함 (터미널 프롬프트 앞에 `(venv)` 표시 확인).
 
+CLI로 실행:
 ```bash
 python cli.py
+```
+
+GUI로 실행 (Tkinter 버전 — ttkbootstrap 다크테마 적용):
+```bash
+python gui_tkinter.py
+```
+
+GUI로 실행 (PyQt6 버전 — qdarkstyle 다크테마 적용):
+```bash
+python gui_qt.py
+```
+
+두 GUI 모두 다크테마가 기본 적용되어 있고, 한글이 깨지지 않도록 폰트를
+"Malgun Gothic"(Windows 기본 한글 폰트)으로 고정해둠. Windows가 아닌 환경에서는
+이 폰트가 없을 수 있어서, 그 경우 시스템 기본 폰트로 자동 대체됨.
+
+Tkinter는 Linux/WSL 환경에서 기본 파이썬에 안 딸려오는 경우가 있어서, 실행 시
+`ModuleNotFoundError: No module named 'tkinter'` 에러가 나면 아래로 설치:
+```bash
+sudo apt install python3-tk
+```
+(Windows 네이티브 파이썬은 보통 기본 포함.)
+
+wsl에서 한글 깨질때
+퐅트가 없어서 그래
+```bash
+sudo apt update
+sudo apt install fonts-nanum -y
 ```
 
 가상환경을 나가려면 `deactivate` 입력.
 
 ## 사용 흐름
 
+### CLI (`cli.py`)
 1. URL 입력
 2. 영상(mp4) / 음원(mp3) 선택
 3. **재생목록**이면 → 1080p 이하 최고화질로 자동 일괄 다운로드
 4. **단일 영상**이면 → 사용 가능한 화질 후보 목록 보여줌 → 번호 선택 → 다운로드
+
+### GUI (`gui_tkinter.py` 또는 `gui_qt.py`, 흐름은 동일)
+1. URL 입력 후 "조회" 클릭
+2. 재생목록이면 바로 다운로드 가능 상태 (1080p 이하 최고화질 자동 적용)
+3. 단일 영상이면 화질 후보 목록이 뜸 → 목록에서 원하는 화질 클릭 → "다운로드" 클릭
+4. 진행률 바 + 로그창으로 진행 상황 확인 가능
+
+둘 다 자막(사람이 만든 것만)이 있으면 자동으로 영상에 소프트섭으로 내장됨.
 
 파일명은 영상 제목 그대로 저장되고, `downloads/` 폴더 아래에 생성됨.
 재생목록은 `downloads/재생목록이름/번호 - 제목.ext` 형태로 정리됨.
@@ -51,7 +89,9 @@ python cli.py
 
 ```
 ytdl/
-├── cli.py              # 실행 진입점 (메인)
+├── cli.py              # CLI 실행 진입점
+├── gui_tkinter.py       # GUI 실행 진입점 (Tkinter, 설치 불필요)
+├── gui_qt.py            # GUI 실행 진입점 (PyQt6, pip 설치 필요)
 ├── core/
 │   ├── __init__.py     # core를 패키지로 인식시키는 마커 (내용 없음)
 │   └── downloader.py   # yt-dlp 래핑, 실제 다운로드 로직
