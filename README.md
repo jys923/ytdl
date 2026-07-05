@@ -11,17 +11,19 @@ yt-dlp 기반 YouTube 다운로더. CLI 코어 엔진 위에 얇은 진입점을
 ## 설치 (venv 사용)
 
 ```bash
+sudo apt update && sudo apt install python3 python3-pip python3-venv -y
+
 # 1. 프로젝트 폴더로 이동
 cd ytdl
 
 # 2. 가상환경 생성
-python -m venv venv
+python3 -m venv .venv
 
 # 3. 가상환경 활성화
 # Windows
-venv\Scripts\activate
+.venv\Scripts\activate
 # macOS / Linux
-source venv/bin/activate
+source .venv/bin/activate
 
 # 4. 의존성 설치
 pip install -r requirements.txt

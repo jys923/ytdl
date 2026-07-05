@@ -1,2 +1,9 @@
 .venv/
 downloads/
+# 파이썬 바이트코드 파일
+*.pyc
+*.pyo
+*.pyd
+
+# 파이썬 캐시 폴더
+__pycache__/
