@@ -426,6 +426,7 @@ class YtdlQtGUI(QMainWindow):
             self._enqueue(
                 url, self.radio_audio.isChecked(),
                 format_id=dialog.chosen_format_id, forced_auto=False,
+                known_title=title,
             )
             self.url_edit.clear()
             self._render_queue()
@@ -435,11 +436,14 @@ class YtdlQtGUI(QMainWindow):
         self.add_btn.setEnabled(True)
         QMessageBox.critical(self, "조회 실패", msg)
 
-    def _enqueue(self, url: str, audio_only: bool, format_id: str | None, forced_auto: bool):
+    def _enqueue(
+        self, url: str, audio_only: bool, format_id: str | None, forced_auto: bool,
+        known_title: str | None = None,
+    ):
         self._item_counter += 1
         iid = self._item_counter
         playlist = is_playlist_url(url)
-        label = url.split("v=")[-1][:20] if "v=" in url else url[-24:]
+        label = known_title or (url.split("v=")[-1][:20] if "v=" in url else url[-24:])
         item = QueueItem(
             id=iid,
             url=url,
@@ -528,11 +532,12 @@ class YtdlQtGUI(QMainWindow):
         self.is_processing = False
 
     def _open_folder(self, filepath: str):
-        folder = str(Path(filepath).parent) if filepath and filepath != "-" else "downloads"
-        if not Path(folder).exists():
+        folder = Path(filepath).parent if filepath and filepath != "-" else Path("downloads")
+        folder = folder.resolve()  # 상대경로 -> 절대경로로 변환 (안 하면 file: URL이 깨짐)
+        if not folder.exists():
             QMessageBox.warning(self, "폴더 없음", f"경로를 찾을 수 없어: {folder}")
             return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def _retry_from_table(self, meta: dict):
         self._enqueue(
