@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import imageio_ffmpeg
 import yt_dlp
@@ -105,18 +106,85 @@ def list_formats(url: str) -> tuple[str, list[FormatInfo]]:
 
 
 # ---------------------------------------------------------------------------
+# 자동 화질 선택 (배치 추가 / 재생목록 공용 정책)
+# 우선순위: 1080p 이하 최고화질 -> 그중 webm 우선 -> 그중 30fps 우선 (용량 최소화 목적)
+# ---------------------------------------------------------------------------
+
+def _auto_format_string(max_height: int | None) -> str:
+    cap = f"[height<={max_height}]" if max_height else ""
+    return (
+        f"bestvideo{cap}[ext=webm][fps<=30]+bestaudio"
+        f"/bestvideo{cap}[ext=webm]+bestaudio"
+        f"/bestvideo{cap}[fps<=30]+bestaudio"
+        f"/bestvideo{cap}+bestaudio"
+        f"/best{cap}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 다운로드 실행
 # ---------------------------------------------------------------------------
+
+def download_auto(
+    url: str,
+    audio_only: bool,
+    max_height: int | None = 1080,
+    progress_hook=None,
+) -> dict:
+    """배치 추가(여러 URL 동시 입력)용: 화질 선택 없이 자동 정책으로 다운로드.
+
+    1080p 이하 최고화질 중 webm 우선 -> 30fps 우선 정책 적용.
+    반환값: {"title": str, "filepath": str, "filesize": int} (성공한 파일 경로/제목/용량)
+    """
+    outtmpl = f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
+
+    if audio_only:
+        opts = {
+            "format": "bestaudio/best",
+            "outtmpl": outtmpl,
+            "ffmpeg_location": FFMPEG_PATH,
+            "postprocessors": [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
+            ],
+        }
+    else:
+        opts = {
+            "format": _auto_format_string(max_height),
+            "outtmpl": outtmpl,
+            "merge_output_format": "mp4",
+            "ffmpeg_location": FFMPEG_PATH,
+            "writesubtitles": True,
+            "writeautomaticsub": False,
+            "subtitleslangs": ["ko", "en"],
+            "postprocessors": [{"key": "FFmpegEmbedSubtitle"}],
+        }
+
+    if progress_hook:
+        opts["progress_hooks"] = [progress_hook]
+
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filepath = ydl.prepare_filename(info)
+        if audio_only:
+            # mp3로 후처리되므로 실제 확장자가 바뀜
+            filepath = str(Path(filepath).with_suffix(".mp3"))
+        elif not filepath.endswith(".mp4"):
+            filepath = str(Path(filepath).with_suffix(".mp4"))
+
+    filesize = Path(filepath).stat().st_size if Path(filepath).exists() else 0
+    return {"title": info.get("title", "unknown"), "filepath": filepath, "filesize": filesize}
+
 
 def download_single(
     url: str,
     format_id: str | None,
     audio_only: bool,
     progress_hook=None,
-) -> None:
+) -> dict:
     """단일 영상 다운로드. format_id가 None이면 audio_only 여부로 결정.
 
     progress_hook: yt-dlp progress_hooks 형식의 콜백 (dict를 인자로 받음). GUI 진행률 표시용.
+    반환값: {"title": str, "filepath": str, "filesize": int}
     """
     outtmpl = f"{DOWNLOAD_DIR}/%(title)s.%(ext)s"
 
@@ -148,7 +216,15 @@ def download_single(
         opts["progress_hooks"] = [progress_hook]
 
     with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+        info = ydl.extract_info(url, download=True)
+        filepath = ydl.prepare_filename(info)
+        if audio_only:
+            filepath = str(Path(filepath).with_suffix(".mp3"))
+        elif not filepath.endswith(".mp4"):
+            filepath = str(Path(filepath).with_suffix(".mp4"))
+
+    filesize = Path(filepath).stat().st_size if Path(filepath).exists() else 0
+    return {"title": info.get("title", "unknown"), "filepath": filepath, "filesize": filesize}
 
 
 def download_playlist(
@@ -175,10 +251,7 @@ def download_playlist(
             ],
         }
     else:
-        if max_height:
-            fmt = f"bestvideo[height<={max_height}]+bestaudio/best[height<={max_height}]"
-        else:
-            fmt = "bestvideo+bestaudio/best"
+        fmt = _auto_format_string(max_height)
         opts = {
             "format": fmt,
             "outtmpl": outtmpl,
