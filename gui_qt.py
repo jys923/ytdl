@@ -22,18 +22,16 @@ from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QRadioButton,
-    QTableWidget,
-    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -263,6 +261,47 @@ class QueueWorker(QObject):
 
 
 # ---------------------------------------------------------------------------
+# 완료 내역 카드 (표 대신 리스트 아이템 형태)
+# ---------------------------------------------------------------------------
+
+class CompletedItemWidget(QFrame):
+    def __init__(self, info: dict, meta: dict, on_open_folder, on_retry):
+        super().__init__()
+        self.meta = meta
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(2)
+
+        top_row = QHBoxLayout()
+        icon = "✔" if info.get("success") else "✖"
+        title_label = QLabel(f"{icon}  {info['title']}")
+        title_label.setStyleSheet("font-weight: bold;")
+        title_label.setWordWrap(True)
+        top_row.addWidget(title_label, stretch=1)
+
+        if info.get("success"):
+            btn = QPushButton("폴더 열기")
+            btn.clicked.connect(lambda: on_open_folder(meta["filepath"]))
+        else:
+            btn = QPushButton("다시 추가")
+            btn.clicked.connect(lambda: on_retry(meta))
+        top_row.addWidget(btn)
+        layout.addLayout(top_row)
+
+        if info.get("success"):
+            subtitle = f"{info['quality']} · {info['size']} · {info['time_or_status']}"
+        else:
+            subtitle = info["time_or_status"]
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setStyleSheet("color: #999999; font-size: 11px;")
+        subtitle_label.setWordWrap(True)
+        layout.addWidget(subtitle_label)
+
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+
+
+# ---------------------------------------------------------------------------
 # 메인 윈도우
 # ---------------------------------------------------------------------------
 
@@ -314,14 +353,10 @@ class YtdlQtGUI(QMainWindow):
         self.current_progress.setRange(0, 100)
         layout.addWidget(self.current_progress)
 
-        layout.addWidget(QLabel("완료 내역  (우클릭: 폴더 열기 / 실패 항목 다시 추가)"))
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["제목", "화질", "용량", "저장 경로", "소요시간/상태"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 편집 불가
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
-        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(QLabel("완료 내역"))
+        self.completed_list = QListWidget()
+        self.completed_list.setSpacing(4)
+        layout.addWidget(self.completed_list, stretch=1)
 
     # ------------------------------------------------------------------
     def _render_queue(self):
@@ -465,59 +500,32 @@ class YtdlQtGUI(QMainWindow):
             self.items[iid].status = f"재시도중({attempt_no}/{MAX_RETRIES})"
             self._render_queue()
 
-    def _add_to_table(self, info: dict, item: QueueItem):
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        for col, key in enumerate(("title", "quality", "size", "path", "time_or_status")):
-            cell = QTableWidgetItem(info[key])
-            if col == 0:
-                # 재추가/폴더열기에 필요한 원본 정보를 첫 셀에 숨겨서 저장
-                cell.setData(
-                    Qt.ItemDataRole.UserRole,
-                    {
-                        "success": info.get("success", False),
-                        "filepath": info.get("path", ""),
-                        "url": item.url,
-                        "audio_only": item.audio_only,
-                        "format_id": item.format_id,
-                    },
-                )
-            self.table.setItem(row, col, cell)
+    def _add_completed_item(self, info: dict, item: QueueItem):
+        meta = {
+            "success": info.get("success", False),
+            "filepath": info.get("path", ""),
+            "url": item.url,
+            "audio_only": item.audio_only,
+            "format_id": item.format_id,
+        }
+        widget = CompletedItemWidget(info, meta, self._open_folder, self._retry_from_table)
+        list_item = QListWidgetItem()
+        list_item.setSizeHint(widget.sizeHint())
+        self.completed_list.addItem(list_item)
+        self.completed_list.setItemWidget(list_item, widget)
 
     def _on_item_done(self, iid: int, info: dict):
         self.items[iid].status = "완료"
-        self._add_to_table(info, self.items[iid])
+        self._add_completed_item(info, self.items[iid])
         self._render_queue()
 
     def _on_item_error(self, iid: int, info: dict):
         self.items[iid].status = "완료"
-        self._add_to_table(info, self.items[iid])
+        self._add_completed_item(info, self.items[iid])
         self._render_queue()
 
     def _on_all_idle(self):
         self.is_processing = False
-
-    # ------------------------------------------------------------------
-    # 완료 표 우클릭 메뉴
-    # ------------------------------------------------------------------
-    def _on_table_context_menu(self, pos):
-        row = self.table.rowAt(pos.y())
-        if row < 0:
-            return
-        cell = self.table.item(row, 0)
-        meta = cell.data(Qt.ItemDataRole.UserRole)
-        if not meta:
-            return
-
-        menu = QMenu(self)
-        if meta["success"]:
-            open_action = menu.addAction("폴더 열기")
-            open_action.triggered.connect(lambda: self._open_folder(meta["filepath"]))
-        else:
-            retry_action = menu.addAction("대기열에 다시 추가")
-            retry_action.triggered.connect(lambda: self._retry_from_table(meta))
-
-        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _open_folder(self, filepath: str):
         folder = str(Path(filepath).parent) if filepath and filepath != "-" else "downloads"
